@@ -1727,21 +1727,18 @@ bracex = ">=2.1.1"
 
 [[package]]
 name = "wheel"
-version = "0.46.3"
+version = "0.47.0"
 description = "Command line tool for manipulating wheel files"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev", "tests"]
 files = [
-    {file = "wheel-0.46.3-py3-none-any.whl", hash = "sha256:4b399d56c9d9338230118d705d9737a2a468ccca63d5e813e2a4fc7815d8bc4d"},
-    {file = "wheel-0.46.3.tar.gz", hash = "sha256:e3e79874b07d776c40bd6033f8ddf76a7dad46a7b8aa1b2787a83083519a1803"},
+    {file = "wheel-0.47.0-py3-none-any.whl", hash = "sha256:212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced"},
+    {file = "wheel-0.47.0.tar.gz", hash = "sha256:cc72bd1009ba0cf63922e28f94d9d83b920aa2bb28f798a31d0691b02fa3c9b3"},
 ]
 
 [package.dependencies]
 packaging = ">=24.0"
-
-[package.extras]
-test = ["pytest (>=6.0.0)", "setuptools (>=77)"]
 
 [[package]]
 name = "zipp"
@@ -1774,4 +1771,4 @@ orjson = ["orjson"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9"
-content-hash = "0d6a0cc51fa6029865a380777f9a44edef217e06b23aff0b7aaf573325d8c75c"
+content-hash = "416a959f631817a026f2ad7c1a2738cf296c6d4b1791a4b0b1cfe83aad3ea159"
