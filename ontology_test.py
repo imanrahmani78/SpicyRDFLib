@@ -13,8 +13,9 @@ from rdflib import Graph
 from spicy import SpicyGraph
 from spicy.embedder import _get_model
 
-ONTOLOGY  = "Ontology/RioTintoCRA_NonInsV4.ttl"
-INSTANCES = "Ontology/RioTintoCRA_InsV4.1.ttl"
+ONTOLOGY    = "Ontology/RioTintoCRA_NonInsV4.ttl"
+INSTANCES   = "Ontology/RioTintoCRA_InsV4.1.ttl"
+LANCE_PATH  = ".spicy_cache/cra_index"  # persistent vector index; reused on re-runs
 
 PREFIX = """
 PREFIX rtcra: <http://riotinto.cra.analytical.ontology#>
@@ -38,12 +39,13 @@ g.parse(INSTANCES, format="turtle")
 load_time = time.perf_counter() - t0
 print(f"  {len(g):,} triples loaded in {load_time:.1f}s")
 
-print("\nBuilding vector index (batched)...")
+print("\nBuilding / loading vector index...")
 t0 = time.perf_counter()
-g.enable_vector_search()
+import os; os.makedirs(os.path.dirname(LANCE_PATH), exist_ok=True)
+g.enable_vector_search(index_path=LANCE_PATH)
 idx_time = time.perf_counter() - t0
 model = _get_model()
-print(f"  Device: {model.device}  |  Index built in {idx_time:.1f}s")
+print(f"  Device: {model.device}  |  Index ready in {idx_time:.1f}s")
 
 # ── Q1: Semantic search over incident descriptions ─────────────────────────
 section("Q1 · Scenarios semantically related to 'structural damage to elevated equipment'")
@@ -160,6 +162,52 @@ LIMIT 8
 print(f"  {len(r)} results\n")
 for row in r:
     print(f"  [{row.operation}]  score={float(row.score):.3f}  type=[{row.eqtype}]  name={row.name}")
+
+
+# ── Q7: cosine_any — find triples related to 'corrosion' across all components
+section("Q7 · cosine_any — any triple related to 'corrosion or chemical degradation'")
+
+r = list(g.query(PREFIX + """
+SELECT ?s ?p ?o ?score WHERE {
+  ?s ?p ?o .
+  BIND(ext:cosine_any(?s, ?p, ?o, "corrosion chemical degradation material failure") AS ?score)
+  FILTER(?score > 0.55)
+}
+ORDER BY DESC(?score)
+LIMIT 8
+"""))
+print(f"  {len(r)} results\n")
+for row in r:
+    p_local = str(row.p).split("#")[-1]
+    s_local = str(row.s).split("#")[-1]
+    print(f"  score={float(row.score):.3f}  [{s_local}] --{p_local}--> [{str(row.o)[:70]}]")
+
+
+# ── Q8: explain — show per-component breakdown for risk scenarios ─────────────
+section("Q8 · explain — per-component score breakdown for risk scenarios")
+
+import json as _json
+r = list(g.query(PREFIX + """
+SELECT ?scenario ?peril ?summary ?details ?score WHERE {
+  ?scenario rtcra:lossScenarioPeril ?peril ;
+            rtcra:incidentSummary   ?summary .
+  BIND(ext:explain(?scenario, rtcra:lossScenarioPeril, ?peril,
+       "structural failure collapse") AS ?details)
+  BIND(ext:cosine_object(?peril, "structural failure collapse") AS ?score)
+  FILTER(?score > 0.35)
+}
+ORDER BY DESC(?score)
+LIMIT 5
+"""))
+print(f"  {len(r)} results\n")
+for row in r:
+    try:
+        d = _json.loads(str(row.details))
+        print(f"  best={d['best']:<9}  score={d['score']:.3f}  "
+              f"sub={d['subject']:.3f}  pred={d['predicate']:.3f}  obj={d['object']:.3f}")
+        print(f"         peril: {str(row.peril)[:80]}")
+    except Exception:
+        print(f"  {row.details}")
 
 
 # ── Summary ───────────────────────────────────────────────────────────────

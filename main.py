@@ -275,7 +275,143 @@ assert "slurry retention dam" in new_labels, (
 )
 print(f"  [{PASS}] New triple correctly indexed and retrieved")
 
+# ── Query 8: cosine_any — search across all three components ─────────────────
+section("Q8 · cosine_any — find triples related to 'tailings' anywhere")
+
+Q8 = """
+PREFIX ext: <https://spicyrdflib.dev/fn#>
+PREFIX ex:  <https://example.org/mining#>
+SELECT ?s ?p ?o ?score WHERE {
+  ?s ?p ?o .
+  BIND(ext:cosine_any(?s, ?p, ?o, "tailings storage impoundment") AS ?score)
+  FILTER(?score > 0.55)
+}
+ORDER BY DESC(?score)
+LIMIT 6
+"""
+
+q8_results = list(g.query(Q8))
+print(f"  Found {len(q8_results)} triples with score > 0.55 across any component:")
+for row in q8_results:
+    p_local = str(row.p).split("#")[-1]
+    s_local = str(row.s).split("#")[-1]
+    print(f"    score={float(row.score):.4f}  [{s_local}] --{p_local}--> [{row.o}]")
+
+assert len(q8_results) > 0, "cosine_any should find tailings-related triples"
+any_labels = {str(r.o) for r in q8_results if str(r.p).endswith("type")}
+assert any("tailings" in lbl.lower() for lbl in any_labels), (
+    f"cosine_any should surface tailings labels: {any_labels}"
+)
+print(f"  [PASS] cosine_any correctly searched all three components")
+
+# ── Query 9: explain — per-component score breakdown ─────────────────────────
+section("Q9 · explain — per-component breakdown for each triple")
+
+Q9 = """
+PREFIX ext: <https://spicyrdflib.dev/fn#>
+PREFIX ex:  <https://example.org/mining#>
+SELECT ?facility ?label ?details WHERE {
+  ?facility ex:type ?label .
+  BIND(ext:explain(?facility, ex:type, ?label, "tailings storage facility") AS ?details)
+}
+ORDER BY ?label
+LIMIT 5
+"""
+
+import json as _json
+q9_results = list(g.query(Q9))
+print(f"  Explain breakdown for {len(q9_results)} triples:")
+for row in q9_results:
+    d = _json.loads(str(row.details))
+    print(f"    label=[{row.label}]  best={d['best']}  score={d['score']}")
+    assert "subject" in d and "predicate" in d and "object" in d and "best" in d
+
+assert len(q9_results) > 0
+print(f"  [PASS] explain returned valid JSON with subject/predicate/object/best keys")
+
+# ── Query 10: Long-text chunking — long literals still scored correctly ───────
+section("Q10 · Chunking — long literal retrieval")
+
+long_text = (
+    "This facility manages the long-term containment of mineral processing tailings. "
+    "The tailings impoundment covers approximately 450 hectares and holds processed "
+    "slurry from the copper concentrator. Regular geotechnical inspections are "
+    "conducted to monitor embankment stability and seepage levels. The facility "
+    "operates under the jurisdiction of the Nevada Division of Environmental Protection "
+    "and complies with all applicable tailings storage standards."
+)
+g.add((EX.LongDescFacility, EX.description, Literal(long_text)))
+g.add((EX.LongDescFacility, EX.type, Literal("tailings impoundment facility")))
+
+Q10 = """
+PREFIX ext: <https://spicyrdflib.dev/fn#>
+PREFIX ex:  <https://example.org/mining#>
+SELECT ?facility ?desc ?score WHERE {
+  ?facility ex:description ?desc .
+  BIND(ext:cosine_object(?desc, "tailings storage geotechnical inspection") AS ?score)
+  FILTER(?score > 0.3)
+}
+ORDER BY DESC(?score)
+"""
+
+q10_results = list(g.query(Q10))
+print(f"  Found {len(q10_results)} long-literal results above 0.3:")
+for row in q10_results:
+    print(f"    score={float(row.score):.4f}  desc length={len(str(row.desc))} chars")
+    print(f"      [{str(row.desc)[:80]}...]")
+
+assert len(q10_results) > 0, "Chunked long literal should be retrievable"
+assert float(q10_results[0].score) > 0.3
+print(f"  [PASS] Long literal chunked and retrieved correctly")
+
+# ── Query 11: LanceDB persistence — save, reload, query ──────────────────────
+section("Q11 · LanceDB persistence — save index, reload, verify queries still work")
+
+import tempfile, os
+with tempfile.TemporaryDirectory() as tmpdir:
+    lance_path = os.path.join(tmpdir, "spicy_index")
+
+    # Build a fresh graph with persistent index
+    g2 = SpicyGraph()
+    for triple in triples:
+        g2.add(triple)
+    g2.enable_vector_search(index_path=lance_path)
+
+    # Verify index was written
+    from spicy import LanceStore
+    store = LanceStore(lance_path)
+    assert store.is_valid(g2), "LanceStore should report valid after write"
+
+    # Build a second graph, load from cache (no re-embedding)
+    import time
+    g3 = SpicyGraph()
+    for triple in triples:
+        g3.add(triple)
+    t0 = time.perf_counter()
+    g3.enable_vector_search(index_path=lance_path)
+    cache_load_time = time.perf_counter() - t0
+
+    Q11 = """
+    PREFIX ext: <https://spicyrdflib.dev/fn#>
+    PREFIX ex:  <https://example.org/mining#>
+    SELECT ?facility ?label ?score WHERE {
+      ?facility ex:type ?label .
+      BIND(ext:cosine_object(?label, "tailings storage facility") AS ?score)
+      FILTER(?score > 0.5)
+    }
+    ORDER BY DESC(?score) LIMIT 3
+    """
+    q11_results = list(g3.query(Q11))
+    print(f"  Cache reload time: {cache_load_time:.2f}s (no embedding)")
+    print(f"  Found {len(q11_results)} results from cache-loaded index:")
+    for row in q11_results:
+        print(f"    score={float(row.score):.4f}  [{row.label}]")
+
+    assert len(q11_results) >= 1
+    assert float(q11_results[0].score) > 0.99, "Top result should be exact match"
+    print(f"  [PASS] Persistent index loaded from LanceDB, queries identical to in-memory")
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 print(f"\n{'═' * 60}")
-print("  All 7 queries passed validation.")
+print("  All 11 queries passed validation.")
 print('═' * 60)

@@ -1,8 +1,11 @@
 from __future__ import annotations
+import re
 import numpy as np
 
 _model = None
 _cache: dict[str, np.ndarray] = {}
+
+_SENT_RE = re.compile(r'(?<=[.!?])\s+|\n+')
 
 
 def _get_model():
@@ -27,6 +30,37 @@ def embed(text: str) -> np.ndarray:
         vec.flags.writeable = False
         _cache[text] = vec
     return _cache[text]
+
+
+def chunk_text(text: str, max_chars: int = 300) -> list[str]:
+    """Split text into sentence-level chunks capped at max_chars.
+
+    Short texts (≤ max_chars) are returned as-is.  Long texts are split on
+    sentence boundaries first; sentences that are themselves longer than
+    max_chars are hard-truncated as a last resort.
+    """
+    if len(text) <= max_chars:
+        return [text]
+
+    sentences = [s.strip() for s in _SENT_RE.split(text) if s.strip()]
+    chunks: list[str] = []
+    current = ""
+    for sent in sentences:
+        if len(sent) > max_chars:
+            if current:
+                chunks.append(current)
+                current = ""
+            # hard truncate oversized single sentence
+            for start in range(0, len(sent), max_chars):
+                chunks.append(sent[start : start + max_chars])
+        elif current and len(current) + 1 + len(sent) > max_chars:
+            chunks.append(current)
+            current = sent
+        else:
+            current = (current + " " + sent).strip() if current else sent
+    if current:
+        chunks.append(current)
+    return chunks or [text[:max_chars]]
 
 
 def batch_embed(texts: list[str], batch_size: int = 256) -> list[np.ndarray]:
