@@ -1,3 +1,72 @@
+# SpicyRDFLib
+
+**SpicyRDFLib** is a research fork of RDFLib that adds **vector-augmented SPARQL queries** —
+semantic similarity search natively inside SPARQL `FILTER` clauses, powered by on-device
+sentence embeddings.
+
+```sparql
+PREFIX ext: <https://spicyrdflib.dev/fn#>
+
+SELECT ?s ?label ?score WHERE {
+  ?s ex:type ?label .
+  BIND(ext:cosine_object(?label, "tailings storage facility") AS ?score)
+  FILTER(?score > 0.8)
+}
+```
+
+No exact string match required. No external vector database. Everything runs in-memory, offline,
+on CPU or Apple MPS.
+
+## SpicyRDFLib Quick Start
+
+```bash
+pip install rdflib sentence-transformers numpy
+git clone https://github.com/imanrahmani78/SpicyRDFLib.git
+cd SpicyRDFLib && pip install -e .
+```
+
+```python
+from rdflib import Literal, Namespace
+from spicy import SpicyGraph
+
+EX = Namespace("https://example.org/mining#")
+g = SpicyGraph()
+g.add((EX.TailingsPond1, EX.type, Literal("tailings storage facility")))
+g.add((EX.TailingsPond2, EX.type, Literal("tailings impoundment")))
+g.add((EX.Pit1,          EX.type, Literal("open pit mine")))
+g.enable_vector_search()
+
+for row in g.query("""
+    PREFIX ext: <https://spicyrdflib.dev/fn#>
+    SELECT ?s ?label ?score WHERE {
+      ?s ex:type ?label .
+      BIND(ext:cosine_object(?label, "tailings storage facility") AS ?score)
+      FILTER(?score > 0.5)
+    } ORDER BY DESC(?score)
+"""):
+    print(f"score={float(row.score):.4f}  {row.label}")
+```
+
+**SPARQL extension functions provided:**
+
+| Function | Description |
+|---|---|
+| `ext:cosine_subject(?s, "query")` | Cosine similarity between subject and query string |
+| `ext:cosine_predicate(?p, "query")` | Cosine similarity between predicate and query string |
+| `ext:cosine_object(?o, "query")` | Cosine similarity between object and query string |
+| `ext:top_k_subject(?s, "query", k)` | `true` if subject is in the top-k most similar subjects |
+| `ext:top_k_predicate(?p, "query", k)` | `true` if predicate is in the top-k most similar predicates |
+| `ext:top_k_object(?o, "query", k)` | `true` if object is in the top-k most similar objects |
+
+See [full SpicyRDFLib documentation](docs/docs/spicy.md) for architecture details, performance
+benchmarks, and the complete API reference.
+
+---
+
+> The original RDFLib documentation follows below.
+
+---
+
 ![](docs/_static/RDFlib.png)
 
 # RDFLib
