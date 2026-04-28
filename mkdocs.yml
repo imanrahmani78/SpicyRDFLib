@@ -1,15 +1,18 @@
-site_name: RDFLib
-site_description: Python library for working with RDF, a simple yet powerful language for representing information.
-site_author: RDFLib Team
+site_name: SpicyRDFLib
+site_description: RDFLib with vector-augmented SPARQL — semantic similarity search natively in SPARQL FILTER clauses.
+site_author: imanrahmani78
 site_url: https://rdflib.readthedocs.org
-repo_name: RDFLib/rdflib
-repo_url: https://github.com/RDFLib/rdflib
-edit_uri: "edit/main/docs/"
+repo_name: imanrahmani78/SpicyRDFLib
+repo_url: https://github.com/imanrahmani78/SpicyRDFLib
+edit_uri: "edit/feature/vector-sparql/docs/"
 copyright: Copyright &copy; 2002 - 2025, RDFLib Team.
 
 # poetry run mkdocs serve -a localhost:8000
 
 nav:
+  - SpicyRDFLib:
+    - Overview & Quick Start: spicy.md
+
   - Usage:
     - Overview: index.md
     - Getting started with RDFLib: gettingstarted.md
